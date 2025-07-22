@@ -50,66 +50,134 @@ def force_lift(rho, v_total, C_L, area):
 
 def estimate_rollout_vector(x_landing, z_landing, vx_landing, vy_landing, vz_landing, spin, surface='fairway'):
     """
-    Estimate rollout vector after landing, accounting for lateral speed and descent angle.
-    
+    Estimate rollout vector after landing, using a simplified model that
+    applies a heuristic reduction based on backspin. It assumes immediate
+    pure roll, then adjusts based on spin and descent angle.
+
     Parameters:
+    - x_landing (float): X-coordinate of landing position (m)
+    - z_landing (float): Z-coordinate of landing position (m)
     - vx_landing (float): Forward velocity (m/s)
-    - vy_landing (float): Vertical velocity (m/s)
+    - vy_landing (float): Vertical velocity (m/s) (Used for descent angle only)
     - vz_landing (float): Lateral velocity (m/s)
+    - spin (float): Backspin in RPM. Positive for backspin.
     - surface (str): Type of ground ('fairway', 'rough', 'hard', 'wet')
-    
+
     Returns:
-    - rollout_vector_m (np.array): [x_roll, z_roll] in meters
+    - rollout_vector_m (np.array): [x_roll_final, z_roll_final] in meters
     - rollout_distance_m (float): total rollout distance (2D magnitude)
+    - total_time (float): total rollout time (estimated)
     """
 
     g = 9.81
 
     # Horizontal landing velocity vector
-    v_horizontal = np.array([vx_landing, vz_landing])
-    v_horiz_mag = np.linalg.norm(v_horizontal)
+    v_horizontal_initial = np.array([vx_landing, vz_landing])
+    v_horiz_mag_initial = np.linalg.norm(v_horizontal_initial)
 
-    # Descent angle (used to scale roll amount)
-    descent_angle_rad = math.atan2(abs(vy_landing), v_horiz_mag)
+    # Descent angle (used to heuristically scale roll amount)
+    # Higher descent angle -> more vertical impact -> less initial horizontal energy for roll
+    # Also, steeper angle often means more backspin is "active" at impact.
+    # Protect against division by zero if v_horiz_mag_initial is 0
+    descent_angle_rad = math.atan2(abs(vy_landing), v_horiz_mag_initial) if v_horiz_mag_initial > 0 else 0
 
-    # Surface friction coefficients (tunable)
+
+    # Surface base rollout factors (tunable)
+    # These represent how much "friction" or resistance the surface provides
+    # Higher factors mean less rollout.
     surface_factors = {
-        'fairway': 2.5,
-        'rough': 4,
-        'hard': 0.6,
-        'wet': 1.1
+        'fairway': {'factor': 0.4}, # Base factor for how much initial velocity translates to roll
+        'rough':   {'factor': 0.8},
+        'hard':    {'factor': 0.2},
+        'wet':     {'factor': 0.6}
     }
-    k = surface_factors.get(surface.lower())  # default fallback
+    params = surface_factors.get(surface.lower(), surface_factors['fairway'])
+    base_roll_factor = params['factor'] # This effectively scales the initial velocity's contribution to rollout
 
-    a_friction = k * g
+    # Simpler: The higher the factor, the *less* the rollout
+    # Let's scale initial velocity directly based on surface
+    initial_rollout_potential = v_horiz_mag_initial * (1 / base_roll_factor) # Example: v * X, where X is how long it rolls
+    
+    # --- Apply Heuristic Reductions ---
 
-    time = v_horiz_mag / a_friction if a_friction > 0 else 0
+    # 1. Backspin Reduction:
+    # A higher backspin value means less rollout.
+    # Spin typically reduces rollout by a significant percentage.
+    # Let's use a non-linear or clamped reduction for spin.
+    # Example: At 0 RPM, no reduction. At max RPM (e.g., 10000), significant reduction.
+    # A linear scale: `spin_reduction = spin / MaxSpinRPM`
+    # Or, a more aggressive reduction: `spin_reduction = (spin / MaxSpinRPM)**power`
+    
+    # Let's assume MaxSpinRPM for a practical shot is around 12000 RPM.
+    max_effective_spin_rpm = 12000 # Cap spin effect to prevent negative rollout
+    clamped_spin = min(spin, max_effective_spin_rpm) # Prevent excessive spin from causing negative rollout
 
-    # Base rollout scalar
-    rollout_mag = (v_horiz_mag**2) / (2 * a_friction) * math.cos(descent_angle_rad)
-    rollout_mag *= 1 - spin / 10000
+    # A simple linear reduction. You can adjust the `0.7` to make backspin more or less effective.
+    # This means 70% reduction at max_effective_spin_rpm.
+    spin_effect_factor = 1.0 - (clamped_spin / max_effective_spin_rpm) 
+    if spin < 0: # If topspin (negative spin input), increase rollout heuristically
+        topspin_boost_factor = abs(spin) / 5000.0 * 0.2 # Small boost for topspin, adjust 0.2
+        spin_effect_factor = 1.0 + topspin_boost_factor
+        spin_effect_factor = min(spin_effect_factor, 1.5) # Cap topspin boost
 
-    # Apply in direction of horizontal velocity
-    if v_horiz_mag != 0:
-        direction = v_horizontal / v_horiz_mag
+    # 2. Descent Angle Reduction:
+    # A steeper descent angle often means less rollout due to more energy absorbed in impact,
+    # and less horizontal velocity maintained.
+    # Use cos(angle) but potentially with a power to emphasize steeper angles.
+    # `descent_angle_factor = math.cos(descent_angle_rad)**2` (more aggressive for steeper angles)
+    # If the ball drops straight down (angle = pi/2), cos(pi/2)=0, factor is 0, so no rollout.
+    # If ball lands flat (angle = 0), cos(0)=1, factor is 1, no reduction.
+    descent_angle_factor = math.cos(descent_angle_rad) # Basic cosine scaling
+
+    # Calculate final estimated rollout magnitude
+    # We combine initial potential with reduction factors.
+    rollout_mag = initial_rollout_potential * spin_effect_factor * descent_angle_factor
+
+    # Ensure rollout is not negative
+    rollout_mag = max(0.0, rollout_mag)
+
+    # --- Apply in direction of horizontal velocity ---
+    # This part is similar to your original code
+    if v_horiz_mag_initial != 0:
+        direction = v_horizontal_initial / v_horiz_mag_initial
     else:
         direction = np.array([0.0, 0.0])
+    estimated_time = 0.0
+    if rollout_mag > 0 and v_horiz_mag_initial > 0:
+        # A simplified constant deceleration to cover the distance
+        # d = v0^2 / (2a) => a = v0^2 / (2d)
+        # t = v0 / a = v0 / (v0^2 / (2d)) = 2d / v0
+        estimated_time = (2 * rollout_mag) / (v_horiz_mag_initial + 1e-6) # Add epsilon to avoid div by zero
 
-    if time > 0:
-        t_vector = np.linspace(0, time, 50)
+    num_steps = 50 # For smooth path visualization
+    if estimated_time > 0:
+        t_vector = np.linspace(0, estimated_time, num_steps)
+        # Calculate distance at each time step assuming constant deceleration
+        # This is for visualization, the final rollout_mag is already determined.
+        # This requires an 'effective' deceleration 'a_eff' over the rollout.
+        if estimated_time > 0:
+            a_eff = -v_horiz_mag_initial / estimated_time # v_final = v0 + a*t = 0
+            s_t = v_horiz_mag_initial * t_vector + 0.5 * a_eff * t_vector**2
+        else:
+            s_t = np.array([0.0])
     else:
         t_vector = np.array([0.0])
+        s_t = np.array([0.0])
 
-    s_t = v_horiz_mag * t_vector - 0.5 * a_friction * t_vector**2
-    s_t = np.clip(s_t, 0, None)  # Ensure no negative distances
+    s_t = np.clip(s_t, 0, rollout_mag) # Ensure distance doesn't exceed final rollout_mag
 
-    x_roll = x_landing + s_t * direction[0]
-    z_roll = z_landing + s_t * direction[1]
+    # Calculate path points
+    x_roll_path = x_landing + s_t * direction[0]
+    z_roll_path = z_landing + s_t * direction[1]
 
-    rollout_vector_m = np.array([x_roll[-1], z_roll[-1]])
-    rollout_distance = np.linalg.norm(rollout_vector_m - np.array([x_landing, z_landing]))
+    # Final rollout position
+    final_x = x_landing + rollout_mag * direction[0]
+    final_z = z_landing + rollout_mag * direction[1]
 
-    return x_roll, z_roll, rollout_vector_m, rollout_distance, time
+    rollout_vector_m = np.array([final_x, final_z])
+    rollout_distance_m = rollout_mag # Already calculated as the magnitude
+
+    return x_roll_path, z_roll_path, rollout_vector_m, rollout_distance_m, estimated_time
 
 def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
     """
@@ -137,7 +205,7 @@ def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
     s = np.array([0.0, 0.0, 0.0])  # x, y, z
 
     # Estimate lift coefficient based on spin
-    C_L = min(0.0001 * spin_RPM, 0.25)
+    C_L = min(0.0001 * spin_RPM, 0.3)
 
     # Define spin axis vector (tilt around y-axis)
     spin_axis_vector = np.array([
@@ -319,25 +387,26 @@ def adjust_carry_for_lateral(carry_meters, lateral_distance_meters, spin_axis):
 
     # More penalty for slice (positive axis), less for draw (negative axis)
     if spin_axis >= 0:
-        penalty = 0.15 * lateral_ratio ** 1.2
+        penalty = 0.8 * lateral_ratio ** 1.2
         adjusted_carry = carry_meters * (1 - penalty)
     elif spin_axis < 0 and spin_axis > -15:
         # Hook: give a small bonus for mild hooks, taper for extremes
-        reward = 0.08 * lateral_ratio ** 1.2
+        reward = 0.8 * lateral_ratio ** 1.2
 
         # Cap reward based on spin axis
         axis_abs = abs(spin_axis)
         if axis_abs < 10:
             boost_factor = 1 + reward
-        elif axis_abs < 20:
+        elif axis_abs < 15:
             boost_factor = 1 + 0.5 * reward
         else:
             boost_factor = 1 + 0.2 * reward  # diminishing returns
+    
 
         adjusted_carry = carry_meters * boost_factor
     elif spin_axis <= -15:
         # Extreme hook: reduce carry slightly
-        penalty = 0.15 * lateral_ratio ** 1.2
+        penalty = 0.8 * lateral_ratio ** 1.2
         adjusted_carry = carry_meters * (1 - penalty)
     else:
         adjusted_carry = carry_meters  # Straight shot
@@ -361,6 +430,15 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
     adjusted_carry = adjust_carry_for_lateral(carry_dist, lateral_distance, spin_axis)
 
     x = x * (adjusted_carry / carry_dist)
+    z = z * (adjusted_carry / carry_dist)
+
+    step_air = 4  # Reduce number of points for smoother animation
+    step_roll = 1
+    x = x[::step_air]
+    y = y[::step_air]
+    z = z[::step_air]
+    x_roll = x_roll[::step_roll]
+    z_roll = z_roll[::step_roll]
 
     # Append rollout starting from adjusted landing point
     x_tot = 1.094 * np.concatenate([x, x_roll])
@@ -371,8 +449,8 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
 
     print(f"Optimal carry distance: {carry_dist:.2f} m ({carry_dist * 1.094:.1f} yd)")
     print(f"Actual carry distance: {adjusted_carry:.2f} m ({adjusted_carry * 1.094:.1f} yd)")
-    print(f"Total distance: {total_dist:.2f} m ({total_dist * 1.094:.1f} yd)")
-    print(f"Height: {height * 1.094:.2f} yd ({height * 1.094 / 3:.2f} ft)")
+    print(f"Total distance: {total_dist / 1.094:.2f} m ({total_dist:.1f} yd)")
+    print(f"Height: {height * 1.094:.2f} yd ({height * 1.094 * 3:.2f} ft)")
     print("Lateral carry distance (yd):", lateral_distance * 1.094)
     print("Spin (RPM):", spin)
     print("Spin axis (degrees):", spin_axis)
@@ -388,14 +466,12 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
     ax.set_title('3D Trajectory of a Golf Ball')
     ax.legend()
     ax.set_xlim(0, 350)
-    ax.set_ylim(50, -50)
+    ax.set_ylim(30, -30)
     ax.set_zlim(0, 60)
     plt.tight_layout()
 
-    step = 4  # Reduce number of points for smoother animation
-    x_tot = x_tot[::step]
-    y_tot = y_tot[::step]
-    z_tot = z_tot[::step]
+    ax.view_init(elev=0, azim=-180)  # Golf sim view
+    #ax.view_init(elev=90, azim=-90, )   # Birds-eye view
 
     ball, = ax.plot([], [], [], 'ro', markersize=6)  # Red ball
     trail, = ax.plot([], [], [], 'b-', linewidth=1)  # Blue trail
@@ -421,15 +497,17 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
 
         return ball, trail
     
+    interval_ms = 0.01 * 1000
+    
     ani = FuncAnimation(
     fig,
     update,
     frames=len(x_tot),
     init_func=init,
     blit=False,     # 3D plots don't fully support blitting
-    interval=20     # milliseconds between frames
+    interval=interval_ms     # milliseconds between frames
     )
 
     plt.show()
 
-graphLiftTrajectory(pw, 0, 0, "rough")
+graphLiftTrajectory(driver, -2, 0, "fairway")
