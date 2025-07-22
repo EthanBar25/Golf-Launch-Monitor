@@ -71,7 +71,7 @@ Clone or download the repo.
 
 Run the script:
 
-python golf_simulator.py
+python main.py
 To simulate a shot, call:
 
 graphLiftTrajectory(driver, face_angle=-2, path_angle=0, surface="fairway")
@@ -86,7 +86,8 @@ surface: "fairway", "rough", "wet", "hard"
 Launch parameters: via club definitions (will later implement user input for spin, ball speed, etc...)
 
 File Structure
-golf_simulator.py        # Main script
+golf_simulator.py        # Golf Simulator script
+main. py                 # Main script
 README.md                # This file
 
 Credits
