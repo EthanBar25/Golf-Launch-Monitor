@@ -11,7 +11,7 @@ THREECD = 0.277
 HYBRIDCD = 0.267
 FIVEWOODCD = 0.2753
 THREEWOODCD = 0.271
-DRIVERCD = 0.246
+DRIVERCD = 0.237
 
 class club_data:
     def __init__(self, name, launch_angle, cd, spin, speed, angle_attack):
@@ -36,7 +36,7 @@ threewood = club_data("3 Wood", 9.2, THREEWOODCD, 4655, 158, -2.3)
 driver = club_data("Driver", 10.9, DRIVERCD, 2686, 167, -0.9)
 
 def main():
-    graphLiftTrajectory(driver, -2, 0, "fairway")
+    graphLiftTrajectory(threewood, 0, 0, "fairway")
 
 if __name__ == "__main__":
     main()

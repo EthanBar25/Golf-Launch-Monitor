@@ -11,7 +11,7 @@ def force_drag(rho, v_total, C_D, area):
 
 def force_lift(rho, v_total, C_L, area):
     '''Returns the scalar magnitude of lift force'''
-    return 0.5 * rho * C_L * area * v_total**2
+    return 0.4 * rho * C_L * area * v_total**2
 
 def estimate_rollout_vector(x_landing, z_landing, vx_landing, vy_landing, vz_landing, spin, surface='fairway'):
     """
