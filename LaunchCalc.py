@@ -11,7 +11,7 @@ def force_drag(rho, v_total, C_D, area):
 
 def force_lift(rho, v_total, C_L, area):
     '''Returns the scalar magnitude of lift force'''
-    return 0.4 * rho * C_L * area * v_total**2
+    return 0.3 * rho * C_L * area * v_total**2
 
 def estimate_rollout_vector(x_landing, z_landing, vx_landing, vy_landing, vz_landing, spin, surface='fairway'):
     """
@@ -170,7 +170,7 @@ def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
     s = np.array([0.0, 0.0, 0.0])  # x, y, z
 
     # Estimate lift coefficient based on spin
-    C_L = min(0.0001 * spin_RPM, 0.3)
+    C_L = min(0.0001 * spin_RPM, 0.5)
 
     # Define spin axis vector (tilt around y-axis)
     spin_axis_vector = np.array([

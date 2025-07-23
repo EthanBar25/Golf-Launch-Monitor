@@ -36,7 +36,7 @@ threewood = club_data("3 Wood", 9.2, THREEWOODCD, 4655, 158, -2.3)
 driver = club_data("Driver", 10.9, DRIVERCD, 2686, 167, -0.9)
 
 def main():
-    graphLiftTrajectory(threewood, 0, 0, "fairway")
+    graphLiftTrajectory(driver, 0, 0, "fairway")
 
 if __name__ == "__main__":
     main()
