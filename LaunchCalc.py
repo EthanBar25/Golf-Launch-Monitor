@@ -11,7 +11,7 @@ def force_drag(rho, v_total, C_D, area):
 
 def force_lift(rho, v_total, C_L, area):
     '''Returns the scalar magnitude of lift force'''
-    return 0.3 * rho * C_L * area * v_total**2
+    return 0.25 * rho * C_L * area * v_total**2
 
 def estimate_rollout_vector(x_landing, z_landing, vx_landing, vy_landing, vz_landing, spin, surface='fairway'):
     """
@@ -170,7 +170,7 @@ def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
     s = np.array([0.0, 0.0, 0.0])  # x, y, z
 
     # Estimate lift coefficient based on spin
-    C_L = min(0.0001 * spin_RPM, 0.5)
+    C_L = min(0.0001 * spin_RPM, 0.46)
 
     # Define spin axis vector (tilt around y-axis)
     spin_axis_vector = np.array([
@@ -417,6 +417,10 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
     print(f"Total distance: {total_dist / 1.094:.2f} m ({total_dist:.1f} yd)")
     print(f"Height: {height * 1.094:.2f} yd ({height * 1.094 * 3:.2f} ft)")
     print("Lateral carry distance (yd):", lateral_distance * 1.094)
+    print("Ball speed (mph):", club_instance.speed)
+    print("Launch angle (degrees):", launch_angle)
+    print(f"Dynamic loft (degrees): {dynamic_loft:.2f}")
+    print("Angle of attack (degrees):", angle_attack)
     print("Spin (RPM):", spin)
     print("Spin axis (degrees):", spin_axis)
     print("Side spin (RPM):", side_spin)
