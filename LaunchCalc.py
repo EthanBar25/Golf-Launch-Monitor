@@ -11,7 +11,7 @@ def force_drag(rho, v_total, C_D, area):
 
 def force_lift(rho, v_total, C_L, area):
     '''Returns the scalar magnitude of lift force'''
-    return 0.25 * rho * C_L * area * v_total**2
+    return 0.5 * rho * C_L * area * v_total**2
 
 def estimate_rollout_vector(x_landing, z_landing, vx_landing, vy_landing, vz_landing, spin, surface='fairway'):
     """
@@ -74,7 +74,7 @@ def estimate_rollout_vector(x_landing, z_landing, vx_landing, vy_landing, vz_lan
     # Or, a more aggressive reduction: `spin_reduction = (spin / MaxSpinRPM)**power`
     
     # Let's assume MaxSpinRPM for a practical shot is around 12000 RPM.
-    max_effective_spin_rpm = 12000 # Cap spin effect to prevent negative rollout
+    max_effective_spin_rpm = 9000 # Cap spin effect to prevent negative rollout
     clamped_spin = min(spin, max_effective_spin_rpm) # Prevent excessive spin from causing negative rollout
 
     # A simple linear reduction. You can adjust the `0.7` to make backspin more or less effective.
@@ -144,7 +144,7 @@ def estimate_rollout_vector(x_landing, z_landing, vx_landing, vy_landing, vz_lan
 
     return x_roll_path, z_roll_path, rollout_vector_m, rollout_distance_m, estimated_time
 
-def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
+def lift_trajectory(u, theta_deg, C_D, C_L, spin_RPM, spin_axis_deg, surface= 'fairway'):
     """
     Simulates the 3D golf ball trajectory with drag and lift using spin axis orientation.
     """
@@ -152,7 +152,7 @@ def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
     dt = 0.01                # time step (s)
     g = -9.81                # gravity (m/s^2)
     rho = 1.225              # air density (kg/m^3)
-    area = 0.00138           # cross-sectional area of golf ball (m^2)
+    area = 0.00143           # cross-sectional area of golf ball (m^2)
     m = 0.045                # mass of golf ball (kg)
 
     # Convert angles and velocity
@@ -168,9 +168,6 @@ def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
     
     # Initial position
     s = np.array([0.0, 0.0, 0.0])  # x, y, z
-
-    # Estimate lift coefficient based on spin
-    C_L = min(0.0001 * spin_RPM, 0.46)
 
     # Define spin axis vector (tilt around y-axis)
     spin_axis_vector = np.array([
@@ -209,10 +206,9 @@ def lift_trajectory(u, theta_deg, C_D, spin_RPM, spin_axis_deg, surface):
         F_L = force_lift(rho, v_total, C_L, area)
         a_L = F_L / m * lift_dir
 
-        # Total acceleration (add gravity in y direction)
         a = a_D + a_L + np.array([0.0, g, 0.0])
 
-        # Update position and velocity
+        # Update position and velocity and acceleration
         s += v * dt + 0.5 * a * dt**2
         v += a * dt
         t += dt
@@ -383,15 +379,16 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
     
     u = club_instance.speed * 0.44704  # Convert speed from mph to m/s
     launch_angle = club_instance.launch_angle
-    CD_dimpled = club_instance.cd
+    CD = club_instance.cd
+    CL = club_instance.cl
     spin = club_instance.spin
     angle_attack = club_instance.angle_attack
     dynamic_loft = calculate_dynamic_loft(launch_angle, angle_attack)
     spin_axis = calculate_spin_axis(face_angle, path_angle, calculate_spin_loft(dynamic_loft, angle_attack)) # Assuming face and path angles are zero for simplicity
     side_spin = calculate_side_spin(spin, spin_axis)  # Assuming face and path angles are zero for simplicity
-    x, y, z, t, carry_dist, x_roll, z_roll, roll_vec, roll_dist, t_roll = lift_trajectory(u, launch_angle, CD_dimpled, spin, spin_axis, surface)
+    x, y, z, t, carry_dist, x_roll, z_roll, roll_vec, roll_dist, t_roll = lift_trajectory(u, launch_angle, CD, CL, spin, spin_axis, surface)
     lateral_distance = z[-1]
-    height = max(y)
+    height = max(y) * 1.094
     adjusted_carry = adjust_carry_for_lateral(carry_dist, lateral_distance, spin_axis)
 
     x = x * (adjusted_carry / carry_dist)
@@ -415,7 +412,7 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
     print(f"Optimal carry distance: {carry_dist:.2f} m ({carry_dist * 1.094:.1f} yd)")
     print(f"Actual carry distance: {adjusted_carry:.2f} m ({adjusted_carry * 1.094:.1f} yd)")
     print(f"Total distance: {total_dist / 1.094:.2f} m ({total_dist:.1f} yd)")
-    print(f"Height: {height * 1.094:.2f} yd ({height * 1.094 * 3:.2f} ft)")
+    print(f"Height: {height:.2f} yd ({height * 3:.2f} ft)")
     print("Lateral carry distance (yd):", lateral_distance * 1.094)
     print("Ball speed (mph):", club_instance.speed)
     print("Launch angle (degrees):", launch_angle)
@@ -424,6 +421,9 @@ def graphLiftTrajectory(club_instance, face_angle, path_angle, surface):
     print("Spin (RPM):", spin)
     print("Spin axis (degrees):", spin_axis)
     print("Side spin (RPM):", side_spin)
+    print("Rollout distance (yd):", roll_dist * 1.094)
+    print("Drag Coefficient (Cd):", CD)
+    print("Lift Coefficient (Cl):", CL)
 
     fig = plt.figure(figsize=(10, 6))
     ax = fig.add_subplot(111, projection='3d')
