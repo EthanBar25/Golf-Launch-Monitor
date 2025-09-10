@@ -39,9 +39,11 @@ threewood = club_data("3 Wood", 9.3, THREEWOODCD, CL, 4655, 162, -2.3)
 driver = club_data("Driver", 10.4, DRIVERCD, CL, 2686, 171, -0.9)
 
 def main():
-    pred_cd = DragModel.model_cd.predict([[104, 9316, 23.7, -4.7]])[0]
-    pred_cl = DragModel.model_cl.predict([[104, 9316, 23.7, -4.7]])[0]
-    club_test = club_data("Test Club", 10.4, pred_cd, pred_cl, 2545, 171, -0.9)
+    club_array = [171, 2545, 10.4, -0.9]
+    pred_cd = DragModel.model_cd.predict([club_array])[0]
+    pred_cl = DragModel.model_cl.predict([club_array])[0]
+    club_test = club_data("Test Club", club_array[2], pred_cd, pred_cl, club_array[1], club_array[0], club_array[3])
+    #Should be around 0.215, 0.16 for driver
     graphLiftTrajectory(club_test, 0, 0, "fairway")
 
 if __name__ == "__main__":

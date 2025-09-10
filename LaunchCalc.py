@@ -149,7 +149,7 @@ def lift_trajectory(u, theta_deg, C_D, C_L, spin_RPM, spin_axis_deg, surface= 'f
     Simulates the 3D golf ball trajectory with drag and lift using spin axis orientation.
     """
     # Constants
-    dt = 0.01                # time step (s)
+    dt = 0.02                # time step (s)
     g = -9.81                # gravity (m/s^2)
     rho = 1.225              # air density (kg/m^3)
     area = 0.00143           # cross-sectional area of golf ball (m^2)
